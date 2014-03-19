@@ -6,17 +6,14 @@
 #include <zmq.h>
 
 #include <cstddef>
-#include <iostream>
 
 namespace zmq {
 
 Socket::Socket(std::shared_ptr<void> context, int type)
   : socket_(zmq_socket(context.get(), type), [] (void* ptr) {
-      std::cout << "close" << std::endl;
         zmq_close(ptr);
       })
 {
-  std::cout << "create" << std::endl;
 }
 
 Socket::Socket()
@@ -100,7 +97,6 @@ void Socket::unbind(const std::string& addr) {
 }
 
 void Socket::connect(const std::string& addr) {
-  std::cout << socket_.get() << std::endl;
   const int result = zmq_connect(socket_.get(), addr.c_str());
   if (result != 0)
     throw Error();
