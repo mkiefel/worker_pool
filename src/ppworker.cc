@@ -31,16 +31,12 @@ class Worker {
       nextHeartBeat = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(heartbeatInterval_);
 
-      while (1) {
+      while (true) {
         std::vector<zmq::Socket> items = { workerSocket_ };
 
-        int rc = zmq::poll(items, heartbeatInterval_);
-        if (rc == -1)
-          break;              //  Interrupted
+        std::vector<short> state = zmq::poll(items, heartbeatInterval_);
 
-        //if (items[0].revents & ZMQ_POLLIN) {
-        // TODO fix this
-        if (true) {
+        if (state[0] & ZMQ_POLLIN) {
           //  Get message
           //  - 3-part envelope + content -> request
           //  - 1-part HEARTBEAT -> heartbeat

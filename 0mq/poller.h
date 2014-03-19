@@ -7,7 +7,7 @@ namespace zmq {
 
 class Socket;
 
-int poll(std::vector<Socket>& items, long timeout_ = -1);
+std::vector<short> poll(std::vector<Socket>& items, long timeout_ = -1);
 
 }
 

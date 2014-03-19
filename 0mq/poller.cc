@@ -7,7 +7,7 @@
 
 namespace zmq {
 
-int poll(std::vector<Socket>& items, long timeout_) {
+std::vector<short> poll(std::vector<Socket>& items, long timeout_) {
   std::vector<zmq_pollitem_t> items_(items.size());
 
   for (std::size_t i = 0; i < items.size(); ++i) {
@@ -21,7 +21,13 @@ int poll(std::vector<Socket>& items, long timeout_) {
   if (result == -1)
     throw Error();
 
-  return result;
+  std::vector<short> state(items_.size());
+
+  for (std::size_t i = 0; i < items.size(); ++i) {
+    state[i] = items_[i].revents;
+  }
+
+  return state;
 }
 
 }
