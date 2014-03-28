@@ -57,12 +57,12 @@ class Worker {
     timepoint_type latestHeartBeat_;
 };
 
-class QueueApplication {
+class BrokerApplication {
   private:
     typedef std::unordered_map<identity_type, Worker, IdentityHash> workermap_type;
 
   public:
-    QueueApplication()
+    BrokerApplication()
       : context_(), frontendSocket_(), backendSocket_()
     {
     }
@@ -117,7 +117,7 @@ class QueueApplication {
       const std::size_t messageCount = messages.size();
 
       if (messageCount < 2) {
-        throw std::runtime_error("QueueApplication::go: receive invalid "
+        throw std::runtime_error("BrokerApplication::go: receive invalid "
             "message");
       }
 
@@ -127,7 +127,7 @@ class QueueApplication {
       const zmq::Message& tag = *messagePtr++;
 
       if (tag.size() != 1) {
-        throw std::runtime_error("QueueApplication::go: invalid tag size");
+        throw std::runtime_error("BrokerApplication::go: invalid tag size");
       }
 
       zmq::Socket::messages_type messagesTail;
@@ -149,7 +149,7 @@ class QueueApplication {
           frontendSocket_.send(messagesTail);
           break;
         default:
-          throw std::runtime_error("QueueApplication::go: invalid tag:");
+          throw std::runtime_error("BrokerApplication::go: invalid tag:");
           break;
       }
     }
@@ -170,7 +170,7 @@ class QueueApplication {
 
       // check if we got Interrupted
       if (messages.empty()) {
-        throw std::runtime_error("QueueApplication::go: got interrupted");
+        throw std::runtime_error("BrokerApplication::go: got interrupted");
       }
 
       if (cacheQueue_.size() < cacheQueueLength_) {
@@ -271,7 +271,7 @@ class QueueApplication {
     }
 
     // do not copy
-    QueueApplication(const QueueApplication&);
+    BrokerApplication(const BrokerApplication&);
 
     const std::size_t heartbeatInterval_ = 1000;
     const std::size_t cacheQueueLength_ = 1;
@@ -286,7 +286,7 @@ class QueueApplication {
 };
 
 int main(int /*argc*/, const char** /*argv*/) {
-  QueueApplication app;
+  BrokerApplication app;
   app.init();
 
   app.go();

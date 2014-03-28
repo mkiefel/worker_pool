@@ -1,6 +1,6 @@
-#include "zmq_client.h"
-
 #include <0mq/message.h>
+
+#include <0mqmap/zmq_client.h>
 
 #include <vector>
 

@@ -1,6 +1,6 @@
-#include "zmq_worker.h"
-
 #include <0mq/message.h>
+
+#include <0mqmap/zmq_worker.h>
 
 #include <thread>
 
