@@ -60,8 +60,12 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       zmq::Socket::messages_type::iterator messagePtr =
         messages.begin();
       const zmq::Message& tag = *messagePtr++;
+      const zmq::Message& jobIDPart = *messagePtr++;
       jobid_type jobID;
-      std::memcpy(&jobID, (*messagePtr++).data(), sizeof(jobid_type));
+      if (jobIDPart.size() != sizeof(jobid_type)) {
+        throw std::runtime_error("Client::map: job id has wrong size");
+      }
+      std::memcpy(&jobID, jobIDPart.data(), sizeof(jobid_type));
 
       if (tag.size() != 1) {
         throw std::runtime_error("WorkerApplication::map: invalid tag size");
@@ -184,7 +188,7 @@ void Client::requestJob(const std::vector<zmq::Message>& mapData,
   std::size_t jobID = waitingJobs.front();
   waitingJobs.pop_front();
 
-  zmq::Message job(1);
+  zmq::Message job(sizeof(jobid_type));
   std::memcpy(job.data(), &jobID, sizeof(jobid_type));
 
   zmq::Socket::messages_type request;
