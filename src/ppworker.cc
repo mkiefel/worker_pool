@@ -92,6 +92,7 @@ class WorkerApplication {
     void go() {
       bool isBusy = false;
       zmq::Message client;
+      zmq::Message jobID;
 
       std::chrono::time_point<std::chrono::steady_clock> nextQueueBeat;
       nextQueueBeat = std::chrono::steady_clock::now() +
@@ -113,8 +114,10 @@ class WorkerApplication {
         if (state[0] & ZMQ_POLLIN) {
           zmq::Socket::messages_type messages = workerSocket_.receive();
 
+          const std::size_t messageSize = messages.size();
+
           // check if we got a valid message
-          if (messages.empty()) {
+          if (messageSize == 0) {
             throw std::runtime_error("WorkerApplication::go: got interrupted");
           }
 
@@ -133,13 +136,21 @@ class WorkerApplication {
           switch (tag.data()[0]) {
             case QUEUE_HEARTBEAT_TAG:
               // do nothing
+              if (messageSize != 1) {
+                throw std::runtime_error("WorkerApplication::go: invalid heartbeak");
+              }
               break;
             case QUEUE_JOB_TAG:
               // got a job
               // push the address of the client
+              if (messageSize < 4) {
+                throw std::runtime_error("WorkerApplication::go: invalid job request");
+              }
+
               std::cout << "got job" << std::endl;
 
               client = *messagePtr++;
+              jobID = *messagePtr++;
               isBusy = true;
 
               jobRequest.push_back(*messagePtr);
@@ -165,6 +176,8 @@ class WorkerApplication {
 
           jobReplyTag.data()[0] = JOB_DONE;
           reply.push_back(std::move(jobReplyTag));
+          reply.push_back(std::move(jobID));
+
           reply.splice(reply.end(), jobReply);
 
           workerSocket_.send(reply);
@@ -213,6 +226,7 @@ class WorkerApplication {
             zmq::Message jobReplyTag(1);
             jobReplyTag.data()[0] = JOB_BUSY;
             heartbeat.push_back(std::move(jobReplyTag));
+            heartbeat.push_back(jobID);
             workerSocket_.send(heartbeat);
           }
         }

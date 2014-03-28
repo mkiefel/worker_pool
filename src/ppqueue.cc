@@ -72,94 +72,37 @@ class QueueApplication {
     }
 
     void go() {
-      workermap_type idleWorkers;
-      workermap_type busyWorkers;
-
       //  Send out heartbeats at regular intervals
       timepoint_type nextHeartBeat;
       nextHeartBeat = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(heartbeatInterval_);
 
       while (true) {
-        std::vector<zmq::Socket> items = { backendSocket_ };
-        if (!idleWorkers.empty())
-          items.push_back(frontendSocket_);
+        std::vector<zmq::Socket> items = { backendSocket_, frontendSocket_ };
 
         std::vector<short> state = zmq::poll(items, heartbeatInterval_);
 
         // handle backend
         if (state[0] & ZMQ_POLLIN) {
-          zmq::Socket::messages_type messages = backendSocket_.receive();
-          // check if we got Interrupted
-          const std::size_t messageCount = messages.size();
-
-          if (messageCount < 2) {
-            throw std::runtime_error("QueueApplication::go: receive invalid "
-                "message");
-          }
-
-          zmq::Socket::messages_type::iterator messagePtr =
-            messages.begin();
-          const zmq::Message& identity = *messagePtr++;
-          const zmq::Message& tag = *messagePtr++;
-
-          if (tag.size() != 1) {
-            throw std::runtime_error("QueueApplication::go: invalid tag size");
-          }
-
-          zmq::Socket::messages_type messagesTail;
-          messagesTail.splice(messagesTail.begin(), messages, messagePtr,
-              messages.end());
-
-          switch (tag.data()[0]) {
-            case WORKER_HEARTBEAT_TAG:
-              // this worker is idle again; in case it was busy, remove it from
-              // the busy queue
-              busyWorkers.erase(identity);
-
-              updateWorkers(idleWorkers, identity);
-              break;
-            case WORKER_UPDATE_TAG:
-              // worker busy messages are directly forwarded to the clients,
-              // they have to take care if a worker dies
-              updateWorkers(busyWorkers, identity);
-              frontendSocket_.send(messagesTail);
-              break;
-            default:
-              throw std::runtime_error("QueueApplication::go: invalid tag:");
-              break;
-          }
+          handleBackend();
         }
 
         // handle frontend
-        if (state.size() > 1 && state[1] & ZMQ_POLLIN) {
-          zmq::Socket::messages_type messages = frontendSocket_.receive();
-          // check if we got Interrupted
-          if (messages.empty()) {
-            throw std::runtime_error("QueueApplication::go: got interrupted");
-          }
-
-          const auto it = idleWorkers.begin();
-
-          zmq::Message tag(1);
-          tag.data()[0] = QUEUE_JOB_TAG;
-          messages.push_front(std::move(tag));
-          messages.push_front(it->second.getIdentity());
-
-          backendSocket_.send(messages);
-
-          // remove worker
-          updateWorkers(busyWorkers, it->first);
-          idleWorkers.erase(it);
+        if (state[1] & ZMQ_POLLIN) {
+          handleFrontend();
         }
 
         // we do not care about vanished idle workers
-        checkWorkers(idleWorkers);
+        checkWorkers(idleWorkers_);
+
+        assignJobs();
 
         timepoint_type now = std::chrono::steady_clock::now();
         if (now > nextHeartBeat) {
-          sendHeartBeat(idleWorkers);
-          sendHeartBeat(busyWorkers);
+          sendHeartBeat(idleWorkers_);
+          sendHeartBeat(busyWorkers_);
+
+          sendJobQueued();
 
           nextHeartBeat = now +
             std::chrono::milliseconds(heartbeatInterval_);
@@ -168,6 +111,117 @@ class QueueApplication {
     }
 
   private:
+    void handleBackend() {
+      zmq::Socket::messages_type messages = backendSocket_.receive();
+      // check if we got Interrupted
+      const std::size_t messageCount = messages.size();
+
+      if (messageCount < 2) {
+        throw std::runtime_error("QueueApplication::go: receive invalid "
+            "message");
+      }
+
+      zmq::Socket::messages_type::iterator messagePtr =
+        messages.begin();
+      const zmq::Message& identity = *messagePtr++;
+      const zmq::Message& tag = *messagePtr++;
+
+      if (tag.size() != 1) {
+        throw std::runtime_error("QueueApplication::go: invalid tag size");
+      }
+
+      zmq::Socket::messages_type messagesTail;
+      messagesTail.splice(messagesTail.begin(), messages, messagePtr,
+          messages.end());
+
+      switch (tag.data()[0]) {
+        case WORKER_HEARTBEAT_TAG:
+          // this worker is idle again; in case it was busy, remove it from
+          // the busy queue
+          busyWorkers_.erase(identity);
+
+          updateWorkers(idleWorkers_, identity);
+          break;
+        case WORKER_UPDATE_TAG:
+          // worker busy messages are directly forwarded to the clients,
+          // they have to take care if a worker dies
+          updateWorkers(busyWorkers_, identity);
+          frontendSocket_.send(messagesTail);
+          break;
+        default:
+          throw std::runtime_error("QueueApplication::go: invalid tag:");
+          break;
+      }
+    }
+
+    void sendJobQueued() {
+      for (const auto& job : cacheQueue_) {
+        zmq::Socket::messages_type::const_iterator messagePtr =
+          job.begin();
+        const zmq::Message& client = *messagePtr++;
+        const zmq::Message& jobID = *messagePtr++;
+
+        sendJobTag(client, JOB_QUEUED, jobID);
+      }
+    }
+
+    void handleFrontend() {
+      zmq::Socket::messages_type messages = frontendSocket_.receive();
+
+      // check if we got Interrupted
+      if (messages.empty()) {
+        throw std::runtime_error("QueueApplication::go: got interrupted");
+      }
+
+      if (cacheQueue_.size() < cacheQueueLength_) {
+        cacheQueue_.push_back(messages);
+      } else {
+        // send wait and drop job
+        zmq::Socket::messages_type::iterator messagePtr =
+          messages.begin();
+        const zmq::Message& client = *messagePtr++;
+        const zmq::Message& jobID = *messagePtr++;
+
+        sendJobTag(client, JOB_WAIT, jobID);
+      }
+    }
+
+    void sendJobTag(const identity_type& client, const int tag, const
+        jobid_type& jobID) {
+      zmq::Socket::messages_type reply;
+      reply.push_back(client);
+
+      zmq::Message jobReplyTag(1);
+      jobReplyTag.data()[0] = tag;
+      reply.push_back(std::move(jobReplyTag));
+      reply.push_back(std::move(jobID));
+
+      frontendSocket_.send(reply);
+    }
+
+    void assignJobs() {
+      auto jobIt = cacheQueue_.begin();
+      auto workerIt = idleWorkers_.begin();
+
+      while (workerIt != idleWorkers_.end() && jobIt != cacheQueue_.end()) {
+        zmq::Socket::messages_type assigment;
+        assigment.push_back(workerIt->second.getIdentity());
+
+        zmq::Message queueTag(1);
+        queueTag.data()[0] = QUEUE_JOB_TAG;
+        assigment.push_back(std::move(queueTag));
+
+        assigment.splice(assigment.end(), *jobIt);
+
+        backendSocket_.send(assigment);
+
+        // remove worker
+        updateWorkers(busyWorkers_, workerIt->first);
+        workerIt = idleWorkers_.erase(workerIt);
+        jobIt = cacheQueue_.erase(jobIt);
+      }
+    }
+
     void sendHeartBeat(const workermap_type& workers) {
       zmq::Message tag(1);
       tag.data()[0] = QUEUE_HEARTBEAT_TAG;
@@ -220,10 +274,15 @@ class QueueApplication {
     QueueApplication(const QueueApplication&);
 
     const std::size_t heartbeatInterval_ = 1000;
+    const std::size_t cacheQueueLength_ = 1;
 
     zmq::Context context_;
     zmq::Socket frontendSocket_;
     zmq::Socket backendSocket_;
+
+    std::list<zmq::Socket::messages_type> cacheQueue_;
+    workermap_type idleWorkers_;
+    workermap_type busyWorkers_;
 };
 
 int main(int /*argc*/, const char** /*argv*/) {

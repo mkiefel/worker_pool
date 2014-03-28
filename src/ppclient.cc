@@ -23,7 +23,7 @@ class ClientApplication {
       connect();
     }
 
-    void go() {
+    /*std::vector<zmq::Message>*/ void map(/*const std::vector<zmq::Message>& map*/) {
       std::size_t liveness = heartbeatLiveness_;
       std::size_t interval = intervalInit_;
 
@@ -41,6 +41,7 @@ class ClientApplication {
 
         zmq::Socket::messages_type request;
         request.push_back(std::move(job));
+        request.push_back(zmq::Message());
 
         clientSocket_.send(request);
 
@@ -68,6 +69,16 @@ class ClientApplication {
 
             liveness = heartbeatLiveness_;
             switch (tag.data()[0]) {
+              case JOB_WAIT:
+                // queue is busy; sleep and try again
+                std::cout << "queue is full" << std::endl;
+                isWaiting = false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                break;
+              case JOB_QUEUED:
+                // do nothing
+                std::cout << "queued" << std::endl;
+                break;
               case JOB_BUSY:
                 // do nothing
                 std::cout << "busy" << std::endl;
@@ -89,7 +100,8 @@ class ClientApplication {
           }
 
           if (--liveness == 0) {
-            std::cout << "W: heartbeat failure, can't reach queue" << std::endl;
+            std::cout << "W: heartbeat failure, can't reach queue or worker "
+              "died" << std::endl;
             std::cout << "W: reconnecting in " << interval << " msec..." <<
               std::endl;
 
@@ -130,5 +142,13 @@ int main(int /*argc*/, const char** /*argv*/) {
   ClientApplication client;
   client.init();
 
-  client.go();
+  zmq::Message data(1);
+
+  //std::vector<zmq::Message> mapData;
+  //mapData.push_back(data);
+  //mapData.push_back(data);
+  //mapData.push_back(data);
+  //mapData.push_back(data);
+
+  client.map(/*mapData*/);
 }
