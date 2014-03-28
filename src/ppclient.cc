@@ -32,6 +32,7 @@ class ClientApplication {
     }
 
     std::vector<zmq::Message> map(const std::vector<zmq::Message>& mapData) {
+      std::size_t liveness = heartbeatLiveness_;
       std::size_t interval = intervalInit_;
 
       waitingjobs_type waitingJobs;
@@ -75,6 +76,7 @@ class ClientApplication {
             std::cout << "WorkerApplication::go: invalid job id" << std::endl;
           }
 
+          liveness = heartbeatLiveness_;
           switch (tag.data()[0]) {
             case JOB_WAIT:
               // queue is busy; sleep and try again
@@ -112,7 +114,7 @@ class ClientApplication {
           }
         }
 
-        if (false) {
+        if (--liveness == 0) {
           std::cout << "W: heartbeat failure, can't reach queue or worker "
             "died" << std::endl;
           std::cout << "W: reconnecting in " << interval << " msec..." <<
@@ -123,7 +125,11 @@ class ClientApplication {
           if (interval < intervalMax_)
             interval *= 2;
 
+          // get all the busy jobs and push them back to the waitingJobs
+          resetWaitingJobs(waitingJobs, busyJobs);
+
           connect();
+          liveness = heartbeatLiveness_;
         }
 
         checkJobs(waitingJobs, busyJobs);
@@ -133,6 +139,15 @@ class ClientApplication {
     }
 
   private:
+    void resetWaitingJobs(waitingjobs_type& waitingJobs, busyjobs_type& busyJobs) const {
+      busyjobs_type::iterator jobIt = busyJobs.begin();
+      while (jobIt != busyJobs.end()) {
+        std::cout << "back" << std::endl;
+        waitingJobs.push_back(jobIt->first);
+        jobIt = busyJobs.erase(jobIt);
+      }
+    }
+
     void checkJobs(waitingjobs_type& waitingJobs, busyjobs_type& busyJobs) const {
       timepoint_type now = std::chrono::steady_clock::now();
 
@@ -192,6 +207,10 @@ class ClientApplication {
       clientSocket_.connect("tcp://localhost:5555");
     }
 
+    // number of times we may reach the heartbeatInterval_ timeout without a
+    // message from the queue
+    const std::size_t heartbeatLiveness_ = 3;
+    // maximal time we wait for messages from the queue
     const std::size_t heartbeatInterval_ = 1000;
     // the time that maximally may pass between to messages for a job beat
     const std::size_t jobbeatInterval_ = 3000;
