@@ -9,6 +9,7 @@
 #include <iostream>
 #include <thread>
 #include <cassert>
+#include <cstring>
 
 namespace zmqmap {
 
@@ -59,7 +60,8 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       zmq::Socket::messages_type::iterator messagePtr =
         messages.begin();
       const zmq::Message& tag = *messagePtr++;
-      jobid_type jobID = (*messagePtr++).data()[0];
+      jobid_type jobID;
+      std::memcpy(&jobID, (*messagePtr++).data(), sizeof(jobid_type));
 
       if (tag.size() != 1) {
         throw std::runtime_error("WorkerApplication::map: invalid tag size");
@@ -183,7 +185,7 @@ void Client::requestJob(const std::vector<zmq::Message>& mapData,
   waitingJobs.pop_front();
 
   zmq::Message job(1);
-  job.data()[0] = jobID;
+  std::memcpy(job.data(), &jobID, sizeof(jobid_type));
 
   zmq::Socket::messages_type request;
   request.push_back(std::move(job));
