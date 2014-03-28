@@ -23,9 +23,11 @@ class ClientApplication {
       connect();
     }
 
-    /*std::vector<zmq::Message>*/ void map(/*const std::vector<zmq::Message>& map*/) {
+    std::vector<zmq::Message> map(const std::vector<zmq::Message>& mapData) {
       std::size_t liveness = heartbeatLiveness_;
       std::size_t interval = intervalInit_;
+
+      std::vector<zmq::Message> mappedData;
 
       std::chrono::time_point<std::chrono::steady_clock> nextHeartBeat;
       nextHeartBeat = std::chrono::steady_clock::now() +
@@ -117,6 +119,8 @@ class ClientApplication {
           }
         }
       }
+
+      return mappedData;
     }
 
   private:
@@ -144,11 +148,11 @@ int main(int /*argc*/, const char** /*argv*/) {
 
   zmq::Message data(1);
 
-  //std::vector<zmq::Message> mapData;
-  //mapData.push_back(data);
-  //mapData.push_back(data);
-  //mapData.push_back(data);
-  //mapData.push_back(data);
+  std::vector<zmq::Message> mapData;
+  mapData.push_back(data);
+  mapData.push_back(data);
+  mapData.push_back(data);
+  mapData.push_back(data);
 
-  client.map(/*mapData*/);
+  client.map(mapData);
 }
