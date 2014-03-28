@@ -1,95 +1,181 @@
+#include "tags.h"
+
 #include <0mq/context.h>
 #include <0mq/socket.h>
 #include <0mq/message.h>
 #include <0mq/poller.h>
 
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 #include <iostream>
 #include <cstddef>
 #include <chrono>
 #include <thread>
+#include <functional>
+#include <string>
+#include <sstream>
 
-class Worker {
+typedef std::function<zmq::Message (const zmq::Message&)> jobfunction_type;
+
+class Job {
   public:
-    Worker()
-    : context_(), workerSocket_() {
+    Job(const jobfunction_type& jobFunction, zmq::Context& context)
+      : context_(context), jobFunction_(jobFunction), doWork_(true)
+    {
     }
 
-    ~Worker() {
+    ~Job() {
+      doWork_ = false;
+
+      thread_->join();
+    }
+
+    void init(const std::string& bindStr) {
+      using namespace std::placeholders;
+      // create a thread that waits on the job socket for work
+      thread_ = std::unique_ptr<std::thread>(new
+          std::thread(std::bind(&Job::go, this, bindStr)));
+    }
+
+  private:
+    void go(const std::string& bindStr) {
+      zmq::Socket jobSocket = context_.createSocket(ZMQ_PAIR);
+      jobSocket.connect(bindStr.c_str());
+
+      while (doWork_) {
+        zmq::Socket::messages_type request = jobSocket.receive();
+
+        if (request.size() != 1) {
+          throw std::runtime_error("Job::go: empty data");
+        }
+
+        zmq::Message replyMessage = jobFunction_(request.front());
+
+        zmq::Socket::messages_type reply {replyMessage};
+        jobSocket.send(reply);
+      }
+    }
+
+    // do not copy
+    Job(const Job&);
+
+    zmq::Context context_;
+    const jobfunction_type jobFunction_;
+    bool doWork_;
+    std::unique_ptr<std::thread> thread_;
+};
+
+class WorkerApplication {
+  public:
+    WorkerApplication(const jobfunction_type& jobFunction)
+    : context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_)
+    {
+    }
+
+    ~WorkerApplication() {
     }
 
     void init() {
+      boost::uuids::uuid uuid;
+
+      std::ostringstream bindStr;
+      bindStr << "inproc://job_" << uuid;
+
+      jobSocket_ = context_.createSocket(ZMQ_PAIR);
+      jobSocket_.bind(bindStr.str().c_str());
+      job_.init(bindStr.str());
+
       connect();
     }
 
     void go() {
-      //  If liveness hits zero, queue is considered disconnected
-      std::size_t liveness = heartbeatLiveness_;
+      bool isBusy = false;
+      zmq::Message client;
+
+      std::chrono::time_point<std::chrono::steady_clock> nextQueueBeat;
+      nextQueueBeat = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(heartbeatInterval_) * 3;
       std::size_t interval = intervalInit_;
 
-      //  Send out heartbeats at regular intervals
       std::chrono::time_point<std::chrono::steady_clock> nextHeartBeat;
       nextHeartBeat = std::chrono::steady_clock::now() +
         std::chrono::milliseconds(heartbeatInterval_);
 
       while (true) {
         std::vector<zmq::Socket> items = { workerSocket_ };
+        if (isBusy) {
+          items.push_back(jobSocket_);
+        }
 
         std::vector<short> state = zmq::poll(items, heartbeatInterval_);
 
         if (state[0] & ZMQ_POLLIN) {
-          //  Get message
-          //  - 3-part envelope + content -> request
-          //  - 1-part HEARTBEAT -> heartbeat
           zmq::Socket::messages_type messages = workerSocket_.receive();
-          if (messages.empty())
-            break;          //  Interrupted
 
-          //  .split simulating problems
-          //  To test the robustness of the queue implementation we 
-          //  simulate various typical problems, such as the worker
-          //  crashing or running very slowly. We do this after a few
-          //  cycles so that the architecture can get up and running
-          //  first:
-          if (messages.size() == 3) {
-            printf ("I: normal reply\n");
-            workerSocket_.send(messages);
-
-            liveness = heartbeatLiveness_;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            // XXX fix this with something else
-            /*if (zctx_interrupted)
-              break;*/
+          // check if we got a valid message
+          if (messages.empty()) {
+            throw std::runtime_error("WorkerApplication::go: got interrupted");
           }
-          else {
-            //  .split handle heartbeats
-            //  When we get a heartbeat message from the queue, it means the
-            //  queue was (recently) alive, so we must reset our liveness
-            //  indicator:
-            if (messages.size() == 1) {
-              zmq::Message& frame = messages[0];
-              // TODO check if the message has at least one byte
-              if (frame.data()[0] == QUEUE_HEARTBEAT_TAG)
-                liveness = heartbeatLiveness_;
-              else {
-                std::cout << "E: invalid message" << std::endl;
-                //zmsg_dump(msg);
-              }
-            }
-            else {
-              std::cout << "E: invalid message" << std::endl;
-              //zmsg_dump (msg);
-            }
 
-            interval = intervalInit_;
+          zmq::Socket::messages_type::iterator messagePtr =
+            messages.begin();
+          const zmq::Message& tag = *messagePtr++;
+
+          if (tag.size() != 1) {
+            throw std::runtime_error("WorkerApplication::go: invalid tag size");
+          }
+
+          zmq::Socket::messages_type jobRequest;
+
+          nextQueueBeat = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(heartbeatInterval_) * 3;
+          switch (tag.data()[0]) {
+            case QUEUE_HEARTBEAT_TAG:
+              // do nothing
+              break;
+            case QUEUE_JOB_TAG:
+              // got a job
+              // push the address of the client
+              std::cout << "got job" << std::endl;
+
+              client = *messagePtr++;
+              isBusy = true;
+
+              jobRequest.push_back(*messagePtr);
+              jobSocket_.send(jobRequest);
+
+              break;
           }
         }
-        else
-        //  .split detecting a dead queue
-        //  If the queue hasn't sent us heartbeats in a while, destroy the
-        //  socket and reconnect. This is the simplest most brutal way of
-        //  discarding any messages we might have sent in the meantime:
-        if (--liveness == 0) {
+
+        if (isBusy && state.size() > 1 && state[1] & ZMQ_POLLIN) {
+          std::cout << "done" << std::endl;
+          zmq::Socket::messages_type jobReply = jobSocket_.receive();
+
+          zmq::Socket::messages_type reply;
+          zmq::Message queueReplyTag(1);
+          zmq::Message jobReplyTag(1);
+
+          queueReplyTag.data()[0] = WORKER_UPDATE_TAG;
+          reply.push_back(std::move(queueReplyTag));
+
+          // push the address of the client
+          reply.push_back(std::move(client));
+
+          jobReplyTag.data()[0] = JOB_DONE;
+          reply.push_back(std::move(jobReplyTag));
+          reply.splice(reply.end(), jobReply);
+
+          workerSocket_.send(reply);
+
+          isBusy = false;
+
+          nextHeartBeat = std::chrono::steady_clock::now() - 2 *
+            std::chrono::milliseconds(heartbeatInterval_);
+        }
+
+        if (std::chrono::steady_clock::now() > nextQueueBeat) {
           std::cout << "W: heartbeat failure, can't reach queue" << std::endl;
           std::cout << "W: reconnecting in " << interval << " msec..." <<
             std::endl;
@@ -99,43 +185,53 @@ class Worker {
           if (interval < intervalMax_)
             interval *= 2;
 
-          // TODO kill worker if there is no successful connect
           connect();
-          liveness = heartbeatLiveness_;
+
+          nextQueueBeat = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(heartbeatInterval_) * 3;
         }
 
         //  Send heartbeat to queue if it's time
         std::chrono::time_point<std::chrono::steady_clock> now =
           std::chrono::steady_clock::now();
+
         if (now > nextHeartBeat) {
           nextHeartBeat = now + std::chrono::milliseconds(heartbeatInterval_);
 
-          std::cout << "I: worker heartbeat" << std::endl;
-          zmq::Message message(1);
-          message.data()[0] = WORKER_HEARTBEAT_TAG;
-          zmq::Socket::messages_type messages = {message};
-          workerSocket_.send(messages);
+          zmq::Message queueReplyTag(1);
+          zmq::Socket::messages_type heartbeat;
+          if (!isBusy) {
+            queueReplyTag.data()[0] = WORKER_HEARTBEAT_TAG;
+            heartbeat.push_back(std::move(queueReplyTag));
+            workerSocket_.send(heartbeat);
+          } else {
+            queueReplyTag.data()[0] = WORKER_UPDATE_TAG;
+            heartbeat.push_back(std::move(queueReplyTag));
+
+            heartbeat.push_back(client);
+
+            zmq::Message jobReplyTag(1);
+            jobReplyTag.data()[0] = JOB_BUSY;
+            heartbeat.push_back(std::move(jobReplyTag));
+            workerSocket_.send(heartbeat);
+          }
         }
       }
     }
 
   private:
     // do not copy
-    Worker(const Worker&);
+    WorkerApplication(const WorkerApplication&);
 
     void connect() {
       workerSocket_ = context_.createSocket(ZMQ_DEALER);
       workerSocket_.connect("tcp://localhost:5556");
 
       //  Tell queue we're ready for work
-      std::cout << "I: worker ready" << std::endl;
       zmq::Message message(1);
-      message.data()[0] = WORKER_READY_TAG;
+      message.data()[0] = WORKER_HEARTBEAT_TAG;
       zmq::Socket::messages_type messages = {message};
       workerSocket_.send(messages);
-    }
-
-    void keepAlive() const {
     }
 
     const std::size_t heartbeatLiveness_ = 3;
@@ -143,129 +239,21 @@ class Worker {
     const std::size_t intervalInit_ = 1000;
     const std::size_t intervalMax_ = 32000;
 
-    enum {
-      WORKER_READY_TAG = 1,
-      WORKER_HEARTBEAT_TAG = 2
-    };
-
-    enum {
-      QUEUE_HEARTBEAT_TAG = 2
-    };
-
-    enum Tag {
-      KILL_TAG = 0,
-      WORK_TAG = 1,
-    };
-
     zmq::Context context_;
-    zmq::Socket workerSocket_;
+    zmq::Socket workerSocket_, jobSocket_;
+    Job job_;
 };
 
+zmq::Message job(const zmq::Message& data) {
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+  return data;
+}
 
-int main (void)
-{
-  Worker worker;
+int main(int /*argc*/, const char** /*argv*/) {
+  WorkerApplication worker(job);
   worker.init();
 
   worker.go();
 
-    //void *worker = s_worker_socket (ctx);
-
-    ////  If liveness hits zero, queue is considered disconnected
-    //size_t liveness = HEARTBEAT_LIVENESS;
-    //size_t interval = INTERVAL_INIT;
-
-    ////  Send out heartbeats at regular intervals
-    //uint64_t heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
-
-    //srandom ((unsigned) time (NULL));
-    //int cycles = 0;
-    //while (1) {
-        //zmq_pollitem_t items [] = { { worker,  0, ZMQ_POLLIN, 0 } };
-        //int rc = zmq_poll (items, 1, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
-        //if (rc == -1)
-            //break;              //  Interrupted
-
-        //if (items [0].revents & ZMQ_POLLIN) {
-            ////  Get message
-            ////  - 3-part envelope + content -> request
-            ////  - 1-part HEARTBEAT -> heartbeat
-            //zmsg_t *msg = zmsg_recv (worker);
-            //if (!msg)
-                //break;          //  Interrupted
-
-            ////  .split simulating problems
-            ////  To test the robustness of the queue implementation we 
-            ////  simulate various typical problems, such as the worker
-            ////  crashing or running very slowly. We do this after a few
-            ////  cycles so that the architecture can get up and running
-            ////  first:
-            //if (zmsg_size (msg) == 3) {
-                //cycles++;
-                //if (cycles > 3 && randof (5) == 0) {
-                    //printf ("I: simulating a crash\n");
-                    //zmsg_destroy (&msg);
-                    //break;
-                //}
-                //else
-                //if (cycles > 3 && randof (5) == 0) {
-                    //printf ("I: simulating CPU overload\n");
-                    //sleep (3);
-                    //if (zctx_interrupted)
-                        //break;
-                //}
-                //printf ("I: normal reply\n");
-                //zmsg_send (&msg, worker);
-                //liveness = HEARTBEAT_LIVENESS;
-                //sleep (1);              //  Do some heavy work
-                //if (zctx_interrupted)
-                    //break;
-            //}
-            //else
-            ////  .split handle heartbeats
-            ////  When we get a heartbeat message from the queue, it means the
-            ////  queue was (recently) alive, so we must reset our liveness
-            ////  indicator:
-            //if (zmsg_size (msg) == 1) {
-                //zframe_t *frame = zmsg_first (msg);
-                //if (memcmp (zframe_data (frame), PPP_HEARTBEAT, 1) == 0)
-                    //liveness = HEARTBEAT_LIVENESS;
-                //else {
-                    //printf ("E: invalid message\n");
-                    //zmsg_dump (msg);
-                //}
-                //zmsg_destroy (&msg);
-            //}
-            //else {
-                //printf ("E: invalid message\n");
-                //zmsg_dump (msg);
-            //}
-            //interval = INTERVAL_INIT;
-        //}
-        //else
-        ////  .split detecting a dead queue
-        ////  If the queue hasn't sent us heartbeats in a while, destroy the
-        ////  socket and reconnect. This is the simplest most brutal way of
-        ////  discarding any messages we might have sent in the meantime:
-        //if (--liveness == 0) {
-            //printf ("W: heartbeat failure, can't reach queue\n");
-            //printf ("W: reconnecting in %zd msec...\n", interval);
-            //zclock_sleep (interval);
-
-            //if (interval < INTERVAL_MAX)
-                //interval *= 2;
-            //zsocket_destroy (ctx, worker);
-            //worker = s_worker_socket (ctx);
-            //liveness = HEARTBEAT_LIVENESS;
-        //}
-        ////  Send heartbeat to queue if it's time
-        //if (zclock_time () > heartbeat_at) {
-            //heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
-            //printf ("I: worker heartbeat\n");
-            //zframe_t *frame = zframe_new (PPP_HEARTBEAT, 1);
-            //zframe_send (&frame, worker, 0);
-        //}
-    //}
-    //zctx_destroy (&ctx);
-    //return 0;
+  return 0;
 }

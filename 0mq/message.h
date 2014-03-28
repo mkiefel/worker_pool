@@ -24,11 +24,16 @@ class Message {
     Message(Message&& message);
     Message(const Message& message);
 
+    Message& operator= (const Message& message);
+
+    bool operator== (const Message& message) const;
+
     std::size_t size() const;
     char* data();
+    const char* data() const;
 
   private:
-    zmq_msg_t message_;
+    mutable zmq_msg_t message_;
 };
 
 }

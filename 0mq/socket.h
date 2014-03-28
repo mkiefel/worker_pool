@@ -1,8 +1,9 @@
 #ifndef _SOCKET_46593F85D31E_
 #define _SOCKET_46593F85D31E_
 
-#include <vector>
+#include <list>
 #include <memory>
+#include <vector>
 
 namespace zmq {
 
@@ -19,7 +20,7 @@ class Socket {
     bool receiveSingle(Message& message, int flags);
 
   public:
-    typedef std::vector<Message> messages_type;
+    typedef std::list<Message> messages_type;
 
     Socket();
 

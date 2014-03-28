@@ -35,7 +35,6 @@ Message::Message(std::size_t size) {
 Message::Message(Message&& message) {
   init();
 
-  std::cout << "moved" << std::endl;
   const int result = zmq_msg_move(&message_, &message.message_);
 
   if (result != 0)
@@ -45,10 +44,28 @@ Message::Message(Message&& message) {
 Message::Message(const Message& message) {
   init();
 
+  *this = message;
+}
+
+Message& Message::operator= (const Message& message) {
   const int result = zmq_msg_copy(&message_,
       const_cast<zmq_msg_t*>(&message.message_));
   if (result != 0)
     throw Error();
+
+  return *this;
+}
+
+bool Message::operator== (const Message& message) const {
+  bool result = this->size() == message.size();
+
+  const char* d = this->data();
+  const char* o = message.data();
+  for (std::size_t i = 0; result && i < this->size(); ++i) {
+    result = result && (d[i] == o[i]);
+  }
+
+  return result;
 }
 
 zmq_msg_t& Message::getMessage() {
@@ -61,6 +78,10 @@ std::size_t Message::size() const {
 
 char* Message::data() {
   return reinterpret_cast<char*>(zmq_msg_data(&message_));
+}
+
+const char* Message::data() const {
+  return reinterpret_cast<const char*>(zmq_msg_data(&message_));
 }
 
 }

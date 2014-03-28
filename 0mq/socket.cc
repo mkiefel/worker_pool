@@ -69,8 +69,10 @@ Socket::messages_type Socket::receive(int flags) {
 }
 
 bool Socket::send(messages_type &messages, int flags) {
-  for (std::size_t i = 0; i < messages.size(); ++i) {
-    const int nbytes = zmq_msg_send(&messages[i].getMessage(), socket_.get(),
+  std::size_t i = 0;
+  for (messages_type::iterator messageIt = messages.begin(); messageIt !=
+      messages.end(); ++messageIt) {
+    const int nbytes = zmq_msg_send(&messageIt->getMessage(), socket_.get(),
         i+1 < messages.size() ? (flags | ZMQ_SNDMORE) : flags);
 
     if (!(nbytes >= 0)) {
@@ -79,6 +81,8 @@ bool Socket::send(messages_type &messages, int flags) {
       else
         throw Error();
     }
+
+    ++i;
   }
 
   return true;
