@@ -1,6 +1,6 @@
 #include <0mq/message.h>
 
-#include <0mqmap/zmq_worker.h>
+#include <0mqmap/worker.h>
 
 #include <thread>
 
@@ -10,7 +10,7 @@ zmq::Message job(const zmq::Message& data) {
 }
 
 int main(int /*argc*/, const char** /*argv*/) {
-  ZmqWorker worker(job);
+  zmqmap::Worker worker(job);
   worker.init();
 
   worker.go();

@@ -1,5 +1,5 @@
 #include "tags.h"
-#include "zmq_worker.h"
+#include "worker.h"
 
 #include <0mq/poller.h>
 
@@ -13,6 +13,8 @@
 #include <string>
 #include <sstream>
 #include <cassert>
+
+namespace zmqmap {
 
 typedef std::chrono::time_point<std::chrono::steady_clock> timepoint_type;
 
@@ -52,16 +54,16 @@ void Job::go(const std::string& bindStr) {
   }
 }
 
-ZmqWorker::ZmqWorker(const jobfunction_type& jobFunction)
+Worker::Worker(const jobfunction_type& jobFunction)
 : context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_),
   isBusy_(false), client_(), jobID_()
 {
 }
 
-ZmqWorker::~ZmqWorker() {
+Worker::~Worker() {
 }
 
-void ZmqWorker::init() {
+void Worker::init() {
   boost::uuids::uuid uuid;
 
   std::ostringstream bindStr;
@@ -74,7 +76,7 @@ void ZmqWorker::init() {
   connect();
 }
 
-void ZmqWorker::go() {
+void Worker::go() {
   timepoint_type nextQueueBeat;
   nextQueueBeat = std::chrono::steady_clock::now() +
     std::chrono::milliseconds(queuebeatInterval_);
@@ -138,7 +140,7 @@ void ZmqWorker::go() {
   }
 }
 
-bool ZmqWorker::handleQueue() {
+bool Worker::handleQueue() {
   bool immediateUpdate = false;
 
   zmq::Socket::messages_type messages = workerSocket_.receive();
@@ -147,7 +149,7 @@ bool ZmqWorker::handleQueue() {
 
   // check if we got a valid message
   if (messageSize == 0) {
-    throw std::runtime_error("ZmqWorker::go: got interrupted");
+    throw std::runtime_error("Worker::handleQueue: got interrupted");
   }
 
   zmq::Socket::messages_type::iterator messagePtr =
@@ -155,27 +157,28 @@ bool ZmqWorker::handleQueue() {
   const zmq::Message& tag = *messagePtr++;
 
   if (tag.size() != 1) {
-    throw std::runtime_error("ZmqWorker::go: invalid tag size");
+    throw std::runtime_error("Worker::handleQueue: invalid tag size");
   }
 
   switch (tag.data()[0]) {
     case QUEUE_HEARTBEAT_TAG:
       // do nothing
       if (messageSize != 1) {
-        throw std::runtime_error("ZmqWorker::go: invalid heartbeak");
+        throw std::runtime_error("Worker::handleQueue: invalid heartbeak");
       }
       break;
     case QUEUE_JOB_TAG:
       // got a job
       if (messageSize != 4) {
-        throw std::runtime_error("ZmqWorker::go: invalid job request");
+        throw std::runtime_error("Worker::handleQueue: invalid job request");
       }
 
       if (!isBusy_) {
         handleNewJob(messagePtr);
         immediateUpdate = true;
       } else {
-        std::cout << "W: I am busy but I got a job. I'll ignore it" << std::endl;
+        std::cout << "W: I am busy but I got a job. I'll ignore it" <<
+          std::endl;
       }
 
       break;
@@ -184,7 +187,7 @@ bool ZmqWorker::handleQueue() {
   return immediateUpdate;
 }
 
-void ZmqWorker::sendHeartBeat() {
+void Worker::sendHeartBeat() {
   zmq::Message queueReplyTag(1);
   zmq::Socket::messages_type heartbeat;
   std::cout << "beat: " << isBusy_ << std::endl;
@@ -206,7 +209,7 @@ void ZmqWorker::sendHeartBeat() {
   }
 }
 
-void ZmqWorker::handleNewJob(zmq::Socket::messages_type::const_iterator messagePtr) {
+void Worker::handleNewJob(zmq::Socket::messages_type::const_iterator messagePtr) {
   // push the address of the client
   std::cout << "got job" << std::endl;
 
@@ -219,7 +222,7 @@ void ZmqWorker::handleNewJob(zmq::Socket::messages_type::const_iterator messageP
   jobSocket_.send(jobRequest);
 }
 
-void ZmqWorker::handleJobDone() {
+void Worker::handleJobDone() {
   std::cout << "done" << std::endl;
   zmq::Socket::messages_type jobReply = jobSocket_.receive();
 
@@ -244,7 +247,7 @@ void ZmqWorker::handleJobDone() {
   isBusy_ = false;
 }
 
-void ZmqWorker::connect() {
+void Worker::connect() {
   workerSocket_ = context_.createSocket(ZMQ_DEALER);
   workerSocket_.connect("tcp://localhost:5556");
 
@@ -253,4 +256,6 @@ void ZmqWorker::connect() {
   message.data()[0] = WORKER_HEARTBEAT_TAG;
   zmq::Socket::messages_type messages = {message};
   workerSocket_.send(messages);
+}
+
 }

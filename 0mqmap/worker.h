@@ -1,5 +1,5 @@
-#ifndef _ZMQ_WORKER_A787FDBAC388_
-#define _ZMQ_WORKER_A787FDBAC388_
+#ifndef _WORKER_A787FDBAC388_
+#define _WORKER_A787FDBAC388_
 
 #include <0mq/context.h>
 #include <0mq/socket.h>
@@ -7,6 +7,8 @@
 
 #include <functional>
 #include <thread>
+
+namespace zmqmap {
 
 class Job {
   public:
@@ -29,13 +31,13 @@ class Job {
     std::unique_ptr<std::thread> thread_;
 };
 
-class ZmqWorker {
+class Worker {
   public:
     typedef std::function<zmq::Message (const zmq::Message&)> jobfunction_type;
 
-    ZmqWorker(const jobfunction_type& jobFunction);
+    Worker(const jobfunction_type& jobFunction);
 
-    ~ZmqWorker();
+    ~Worker();
 
     void init();
     void go();
@@ -47,7 +49,7 @@ class ZmqWorker {
     void handleJobDone();
 
     // do not copy
-    ZmqWorker(const ZmqWorker&);
+    Worker(const Worker&);
 
     void connect();
 
@@ -65,4 +67,6 @@ class ZmqWorker {
     zmq::Message jobID_;
 };
 
-#endif /* _ZMQ_WORKER_A787FDBAC388_ */
+}
+
+#endif /* _WORKER_A787FDBAC388_ */

@@ -1,11 +1,11 @@
 #include <0mq/message.h>
 
-#include <0mqmap/zmq_client.h>
+#include <0mqmap/client.h>
 
 #include <vector>
 
 int main(int /*argc*/, const char** /*argv*/) {
-  ZmqClient client;
+  zmqmap::Client client;
   client.init();
 
   zmq::Message data(1);

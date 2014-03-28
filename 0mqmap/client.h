@@ -1,5 +1,5 @@
-#ifndef _ZMQ_CLIENT_43DACED51E97_
-#define _ZMQ_CLIENT_43DACED51E97_
+#ifndef _CLIENT_43DACED51E97_
+#define _CLIENT_43DACED51E97_
 
 #include <0mq/context.h>
 #include <0mq/socket.h>
@@ -11,10 +11,12 @@
 #include <unordered_map>
 #include <chrono>
 
-class ZmqClient {
+namespace zmqmap {
+
+class Client {
   public:
-    ZmqClient();
-    ~ZmqClient();
+    Client();
+    ~Client();
 
     void init();
 
@@ -43,7 +45,7 @@ class ZmqClient {
         waitingJobs, busyjobs_type& busyJobs);
 
     // do not copy
-    ZmqClient(const ZmqClient&);
+    Client(const Client&);
 
     void connect();
 
@@ -61,5 +63,6 @@ class ZmqClient {
     zmq::Socket clientSocket_;
 };
 
+}
 
-#endif /* _ZMQ_CLIENT_43DACED51E97_ */
+#endif /* _CLIENT_43DACED51E97_ */

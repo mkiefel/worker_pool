@@ -1,5 +1,5 @@
 #include "tags.h"
-#include "zmq_client.h"
+#include "client.h"
 
 #include <0mq/context.h>
 #include <0mq/socket.h>
@@ -10,18 +10,20 @@
 #include <thread>
 #include <cassert>
 
-ZmqClient::ZmqClient()
+namespace zmqmap {
+
+Client::Client()
 : context_(), clientSocket_() {
 }
 
-ZmqClient::~ZmqClient() {
+Client::~Client() {
 }
 
-void ZmqClient::init() {
+void Client::init() {
   connect();
 }
 
-std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
+std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
     mapData) {
   std::size_t liveness = heartbeatLiveness_;
   std::size_t interval = intervalInit_;
@@ -50,7 +52,7 @@ std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
 
       // check if we got a valid message
       if (messageSize < 2) {
-        throw std::runtime_error("ZmqClient::go: got interrupted or "
+        throw std::runtime_error("Client::map: got interrupted or "
             "got invalid message");
       }
 
@@ -60,11 +62,11 @@ std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
       jobid_type jobID = (*messagePtr++).data()[0];
 
       if (tag.size() != 1) {
-        throw std::runtime_error("WorkerApplication::go: invalid tag size");
+        throw std::runtime_error("WorkerApplication::map: invalid tag size");
       }
 
       if (busyJobs.find(jobID) == busyJobs.end()) {
-        std::cout << "WorkerApplication::go: invalid job id" << std::endl;
+        std::cout << "WorkerApplication::map: invalid job id" << std::endl;
       }
 
       liveness = heartbeatLiveness_;
@@ -93,7 +95,7 @@ std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
           std::cout << "done" << std::endl;
 
           if (messageSize != 3) {
-            throw std::runtime_error("WorkerApplication::go: invalid done message");
+            throw std::runtime_error("WorkerApplication::map: invalid done message");
           }
 
           mappedData[jobID] == *messagePtr;
@@ -101,7 +103,7 @@ std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
           --unfinishedJobCount;
           break;
         default:
-          throw std::runtime_error("ZmqClient::go: invalid job tag");
+          throw std::runtime_error("Client::map: invalid job tag");
       }
     }
 
@@ -129,7 +131,7 @@ std::vector<zmq::Message> ZmqClient::map(const std::vector<zmq::Message>&
   return mappedData;
 }
 
-void ZmqClient::resetWaitingJobs(waitingjobs_type& waitingJobs,
+void Client::resetWaitingJobs(waitingjobs_type& waitingJobs,
     busyjobs_type& busyJobs) const {
   busyjobs_type::iterator jobIt = busyJobs.begin();
   while (jobIt != busyJobs.end()) {
@@ -139,7 +141,7 @@ void ZmqClient::resetWaitingJobs(waitingjobs_type& waitingJobs,
   }
 }
 
-void ZmqClient::checkJobs(waitingjobs_type& waitingJobs, busyjobs_type&
+void Client::checkJobs(waitingjobs_type& waitingJobs, busyjobs_type&
     busyJobs) const {
   timepoint_type now = std::chrono::steady_clock::now();
 
@@ -155,24 +157,24 @@ void ZmqClient::checkJobs(waitingjobs_type& waitingJobs, busyjobs_type&
   }
 }
 
-void ZmqClient::handleJobDone(const jobid_type jobID, busyjobs_type&
+void Client::handleJobDone(const jobid_type jobID, busyjobs_type&
     busyJobs) const {
   busyJobs.erase(jobID);
 }
 
-void ZmqClient::updateJob(const jobid_type jobID, busyjobs_type& busyJobs)
+void Client::updateJob(const jobid_type jobID, busyjobs_type& busyJobs)
   const {
   busyJobs[jobID] = std::chrono::steady_clock::now() +
     std::chrono::milliseconds(jobbeatInterval_);
 }
 
-void ZmqClient::handleJobWait(const jobid_type jobID, waitingjobs_type&
+void Client::handleJobWait(const jobid_type jobID, waitingjobs_type&
     waitingJobs, busyjobs_type& busyJobs) const {
   waitingJobs.push_back(jobID);
   busyJobs.erase(jobID);
 }
 
-void ZmqClient::requestJob(const std::vector<zmq::Message>& mapData,
+void Client::requestJob(const std::vector<zmq::Message>& mapData,
     waitingjobs_type& waitingJobs, busyjobs_type& busyJobs) {
   if (waitingJobs.empty())
     return;
@@ -193,7 +195,9 @@ void ZmqClient::requestJob(const std::vector<zmq::Message>& mapData,
   updateJob(jobID, busyJobs);
 }
 
-void ZmqClient::connect() {
+void Client::connect() {
   clientSocket_ = context_.createSocket(ZMQ_DEALER);
   clientSocket_.connect("tcp://localhost:5555");
+}
+
 }
