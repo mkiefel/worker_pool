@@ -103,6 +103,8 @@ class WorkerApplication {
         std::chrono::milliseconds(heartbeatInterval_);
 
       while (true) {
+        bool immediateUpdate = false;
+
         std::vector<zmq::Socket> items = { workerSocket_ };
         if (isBusy_) {
           items.push_back(jobSocket_);
@@ -113,7 +115,7 @@ class WorkerApplication {
         assert(!isBusy_ || state.size() > 1);
 
         if (state[0] & ZMQ_POLLIN) {
-          handleQueue();
+          immediateUpdate = immediateUpdate || handleQueue();
 
           nextQueueBeat = std::chrono::steady_clock::now() +
             std::chrono::milliseconds(queuebeatInterval_);
@@ -123,8 +125,7 @@ class WorkerApplication {
           handleJobDone();
 
           // make sure we let the queue know that we are available again
-          nextHeartBeat = std::chrono::steady_clock::now() - 2 *
-            std::chrono::milliseconds(heartbeatInterval_);
+          immediateUpdate = true;
         }
 
         timepoint_type now =
@@ -147,7 +148,7 @@ class WorkerApplication {
         }
 
         //  Send heartbeat to queue if it's time
-        if (now > nextHeartBeat) {
+        if (immediateUpdate || now > nextHeartBeat) {
           sendHeartBeat();
 
           nextHeartBeat = now + std::chrono::milliseconds(heartbeatInterval_);
@@ -156,7 +157,9 @@ class WorkerApplication {
     }
 
   private:
-    void handleQueue() {
+    bool handleQueue() {
+      bool immediateUpdate = false;
+
       zmq::Socket::messages_type messages = workerSocket_.receive();
 
       const std::size_t messageSize = messages.size();
@@ -187,13 +190,17 @@ class WorkerApplication {
             throw std::runtime_error("WorkerApplication::go: invalid job request");
           }
 
-          if (!isBusy_)
+          if (!isBusy_) {
             handleNewJob(messagePtr);
-          else
+            immediateUpdate = true;
+          } else {
             std::cout << "W: I am busy but I got a job. I'll ignore it" << std::endl;
+          }
 
           break;
       }
+
+      return immediateUpdate;
     }
 
     void sendHeartBeat() {
@@ -254,7 +261,6 @@ class WorkerApplication {
       workerSocket_.send(reply);
 
       isBusy_ = false;
-
     }
 
     // do not copy
