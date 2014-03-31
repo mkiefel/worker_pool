@@ -70,7 +70,8 @@ class BrokerApplication {
     BrokerApplication()
     : heartbeatInterval_(1000), cacheQueueLength_(100),
       context_(), frontendSocket_(), backendSocket_(),
-      cacheQueue_(), idleWorkers_(), busyWorkers_()
+      cacheQueue_(), idleWorkers_(), busyWorkers_(),
+      meanIdleWorkers_(0), meanBusyWorker_(0), meanCacheLength_(0)
     {
     }
 
@@ -113,11 +114,26 @@ class BrokerApplication {
 
           nextHeartBeat = now +
             std::chrono::milliseconds(heartbeatInterval_);
+
+          printStats();
         }
       }
     }
 
   private:
+    static double runningMean(const double mean, const double update) {
+      return (mean * 19.0 + update) / 20.0;
+    }
+
+    void printStats() {
+      meanIdleWorkers_ = runningMean(meanIdleWorkers_, idleWorkers_.size());
+      meanBusyWorker_ = runningMean(meanBusyWorker_, busyWorkers_.size());
+      meanCacheLength_ = runningMean(meanCacheLength_, cacheQueue_.size());
+
+      std::cout << "idle: " << meanIdleWorkers_ << ", busy: " <<
+        meanBusyWorker_ << ", cache: " << meanCacheLength_ << std::endl;
+    }
+
     void handleBackend() {
       zmq::Socket::messages_type messages = backendSocket_.receive();
       // check if we got Interrupted
@@ -291,6 +307,8 @@ class BrokerApplication {
     std::list<zmq::Socket::messages_type> cacheQueue_;
     workermap_type idleWorkers_;
     workermap_type busyWorkers_;
+
+    float meanIdleWorkers_, meanBusyWorker_, meanCacheLength_;
 };
 
 }
