@@ -5,9 +5,16 @@
 #include <vector>
 #include <iostream>
 
-int main(int /*argc*/, const char** /*argv*/) {
+int main(int argc, const char** argv) {
+  if (argc < 2) {
+    std::cout << "Usage: " << argv[0] << " <broker-address>" << std::endl;
+    return 1;
+  }
+
+  std::string brokerAddress = argv[1];
+
   zmqmap::Client client;
-  client.init();
+  client.init(brokerAddress);
 
   zmq::Message data(1);
 
@@ -26,4 +33,6 @@ int main(int /*argc*/, const char** /*argv*/) {
   }
 
   client.map(mapData);
+
+  return 0;
 }

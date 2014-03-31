@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <unordered_map>
 #include <chrono>
+#include <string>
 
 namespace zmqmap {
 
@@ -18,7 +19,7 @@ class Client {
     Client();
     ~Client();
 
-    void init();
+    void init(const std::string& brokerAddress);
 
     std::vector<zmq::Message> map(const std::vector<zmq::Message>& mapData);
 
@@ -58,6 +59,8 @@ class Client {
     const std::size_t jobbeatInterval_ = 3000;
     const std::size_t intervalInit_ = 1000;
     const std::size_t intervalMax_ = 32000;
+
+    std::string brokerAddress_;
 
     zmq::Context context_;
     zmq::Socket clientSocket_;

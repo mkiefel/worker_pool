@@ -20,7 +20,8 @@ Client::Client()
 Client::~Client() {
 }
 
-void Client::init() {
+void Client::init(const std::string& brokerAddress) {
+  brokerAddress_ = brokerAddress;
   connect();
 }
 
@@ -194,7 +195,8 @@ void Client::requestJob(const std::vector<zmq::Message>& mapData,
 
 void Client::connect() {
   clientSocket_ = context_.createSocket(ZMQ_DEALER);
-  clientSocket_.connect("tcp://localhost:5555");
+  //clientSocket_.connect("tcp://localhost:5555");
+  clientSocket_.connect(brokerAddress_);
 }
 
 }
