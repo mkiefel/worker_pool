@@ -68,40 +68,32 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       std::memcpy(&jobID, jobIDPart.data(), sizeof(jobid_type));
 
       if (tag.size() != 1) {
-        throw std::runtime_error("WorkerApplication::map: invalid tag size");
+        throw std::runtime_error("Client::map: invalid tag size");
       }
 
       if (busyJobs.find(jobID) == busyJobs.end()) {
-        std::cout << "WorkerApplication::map: invalid job id" << std::endl;
+        std::cout << "Client::map: invalid job id" << std::endl;
       }
 
       liveness = heartbeatLiveness_;
       switch (tag.data()[0]) {
         case JOB_WAIT:
           // queue is busy; sleep and try again
-          std::cout << "queue is full" << std::endl;
-
           handleJobWait(jobID, waitingJobs, busyJobs);
 
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
           break;
         case JOB_QUEUED:
           // do nothing
-          std::cout << "queued" << std::endl;
-
           updateJob(jobID, busyJobs);
           break;
         case JOB_BUSY:
           // do nothing
-          std::cout << "busy" << std::endl;
-
           updateJob(jobID, busyJobs);
           break;
         case JOB_DONE:
-          std::cout << "done" << std::endl;
-
           if (messageSize != 3) {
-            throw std::runtime_error("WorkerApplication::map: invalid done message");
+            throw std::runtime_error("Client::map: invalid done message");
           }
 
           mappedData[jobID] = *messagePtr;
@@ -141,7 +133,6 @@ void Client::resetWaitingJobs(waitingjobs_type& waitingJobs,
     busyjobs_type& busyJobs) const {
   busyjobs_type::iterator jobIt = busyJobs.begin();
   while (jobIt != busyJobs.end()) {
-    std::cout << "back" << std::endl;
     waitingJobs.push_back(jobIt->first);
     jobIt = busyJobs.erase(jobIt);
   }
@@ -154,7 +145,7 @@ void Client::checkJobs(waitingjobs_type& waitingJobs, busyjobs_type&
   busyjobs_type::iterator jobIt = busyJobs.begin();
   while (jobIt != busyJobs.end()) {
     if (jobIt->second < now) {
-      std::cout << "delete" << std::endl;
+      std::cout << "Client::checkJobs: delete" << std::endl;
       waitingJobs.push_back(jobIt->first);
       jobIt = busyJobs.erase(jobIt);
     } else {

@@ -190,7 +190,6 @@ bool Worker::handleQueue() {
 void Worker::sendHeartBeat() {
   zmq::Message queueReplyTag(1);
   zmq::Socket::messages_type heartbeat;
-  std::cout << "beat: " << isBusy_ << std::endl;
   if (!isBusy_) {
     queueReplyTag.data()[0] = WORKER_HEARTBEAT_TAG;
     heartbeat.push_back(std::move(queueReplyTag));
@@ -211,8 +210,6 @@ void Worker::sendHeartBeat() {
 
 void Worker::handleNewJob(zmq::Socket::messages_type::const_iterator messagePtr) {
   // push the address of the client
-  std::cout << "got job" << std::endl;
-
   client_ = *messagePtr++;
   jobID_ = *messagePtr++;
   isBusy_ = true;
@@ -223,7 +220,7 @@ void Worker::handleNewJob(zmq::Socket::messages_type::const_iterator messagePtr)
 }
 
 void Worker::handleJobDone() {
-  std::cout << "done" << std::endl;
+  std::cout << "Worker::handleJobDone: done" << std::endl;
   zmq::Socket::messages_type jobReply = jobSocket_.receive();
 
   zmq::Socket::messages_type reply;
