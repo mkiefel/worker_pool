@@ -104,7 +104,7 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
             throw std::runtime_error("WorkerApplication::map: invalid done message");
           }
 
-          mappedData[jobID] == *messagePtr;
+          mappedData[jobID] = *messagePtr;
           handleJobDone(jobID, busyJobs);
           --unfinishedJobCount;
           break;

@@ -5,7 +5,7 @@
 #include <thread>
 
 zmq::Message job(const zmq::Message& data) {
-  std::this_thread::sleep_for(std::chrono::seconds(10));
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   return data;
 }
 
