@@ -15,7 +15,7 @@ enum QueueTags {
 
 enum WorkerTags {
   WORKER_HEARTBEAT_TAG = 1,
-  WORKER_UPDATE_TAG = 2,
+  WORKER_UPDATE_TAG = 2
 };
 
 #endif /* _TAGS_50C8919F7B4A_ */

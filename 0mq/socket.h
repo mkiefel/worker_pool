@@ -12,7 +12,7 @@ class Message;
 
 class Socket {
   private:
-    friend Context;
+    friend class Context;
     friend std::vector<short> poll(std::vector<Socket>& items, long timeout_);
 
     Socket(std::shared_ptr<void> context, int type);

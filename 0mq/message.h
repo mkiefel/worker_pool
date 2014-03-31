@@ -11,7 +11,7 @@ class Socket;
 
 class Message {
   private:
-    friend Socket;
+    friend class Socket;
 
     zmq_msg_t& getMessage();
 

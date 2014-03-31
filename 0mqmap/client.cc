@@ -14,7 +14,10 @@
 namespace zmqmap {
 
 Client::Client()
-: context_(), clientSocket_() {
+: heartbeatLiveness_(3), heartbeatInterval_(1000),
+  jobbeatInterval_(3000),
+  intervalInit_(1000), intervalMax_(4000),
+  context_(), clientSocket_() {
 }
 
 Client::~Client() {
@@ -141,7 +144,7 @@ void Client::resetWaitingJobs(waitingjobs_type& waitingJobs,
 
 void Client::checkJobs(waitingjobs_type& waitingJobs, busyjobs_type&
     busyJobs) const {
-  timepoint_type now = std::chrono::steady_clock::now();
+  timepoint_type now = steadyclock_type::now();
 
   busyjobs_type::iterator jobIt = busyJobs.begin();
   while (jobIt != busyJobs.end()) {
@@ -162,7 +165,7 @@ void Client::handleJobDone(const jobid_type jobID, busyjobs_type&
 
 void Client::updateJob(const jobid_type jobID, busyjobs_type& busyJobs)
   const {
-  busyJobs[jobID] = std::chrono::steady_clock::now() +
+  busyJobs[jobID] = steadyclock_type::now() +
     std::chrono::milliseconds(jobbeatInterval_);
 }
 

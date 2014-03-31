@@ -53,10 +53,10 @@ class Worker {
 
     void connect();
 
-    const std::size_t heartbeatInterval_ = 1000;
-    const std::size_t queuebeatInterval_ = 3000;
-    const std::size_t intervalInit_ = 1000;
-    const std::size_t intervalMax_ = 4000;
+    const std::size_t heartbeatInterval_;
+    const std::size_t queuebeatInterval_;
+    const std::size_t intervalInit_;
+    const std::size_t intervalMax_;
 
     zmq::Context context_;
     zmq::Socket workerSocket_, jobSocket_;

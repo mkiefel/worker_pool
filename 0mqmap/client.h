@@ -1,6 +1,8 @@
 #ifndef _CLIENT_43DACED51E97_
 #define _CLIENT_43DACED51E97_
 
+#include "clock.h"
+
 #include <0mq/context.h>
 #include <0mq/socket.h>
 #include <0mq/message.h>
@@ -24,7 +26,7 @@ class Client {
     std::vector<zmq::Message> map(const std::vector<zmq::Message>& mapData);
 
   private:
-    typedef std::chrono::time_point<std::chrono::steady_clock> timepoint_type;
+    typedef std::chrono::time_point<steadyclock_type> timepoint_type;
     typedef std::size_t jobid_type;
     typedef std::list<std::size_t> waitingjobs_type;
     typedef std::unordered_map<std::size_t, timepoint_type> busyjobs_type;
@@ -52,13 +54,13 @@ class Client {
 
     // number of times we may reach the heartbeatInterval_ timeout without a
     // message from the queue
-    const std::size_t heartbeatLiveness_ = 3;
+    const std::size_t heartbeatLiveness_;
     // maximal time we wait for messages from the queue
-    const std::size_t heartbeatInterval_ = 1000;
+    const std::size_t heartbeatInterval_;
     // the time that maximally may pass between to messages for a job beat
-    const std::size_t jobbeatInterval_ = 3000;
-    const std::size_t intervalInit_ = 1000;
-    const std::size_t intervalMax_ = 4000;
+    const std::size_t jobbeatInterval_;
+    const std::size_t intervalInit_;
+    const std::size_t intervalMax_;
 
     std::string brokerAddress_;
 

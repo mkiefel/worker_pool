@@ -1,4 +1,5 @@
 #include "tags.h"
+#include "clock.h"
 
 #include <0mq/message.h>
 #include <0mq/context.h>
@@ -11,8 +12,11 @@
 #include <memory>
 #include <unordered_map>
 #include <iostream>
+#include <stdexcept>
 
-typedef std::chrono::time_point<std::chrono::steady_clock> timepoint_type;
+namespace zmqmap {
+
+typedef std::chrono::time_point<steadyclock_type> timepoint_type;
 
 typedef zmq::Message identity_type;
 typedef zmq::Message jobid_type;
@@ -33,7 +37,7 @@ public:
 class Worker {
   public:
     Worker(const identity_type& identity)
-      : identity_(identity)
+      : heartbeatInterval_(1000 * 3), identity_(identity)
     {
     }
 
@@ -51,7 +55,7 @@ class Worker {
     }
 
   private:
-    const std::size_t heartbeatInterval_ = 1000 * 3;
+    const std::size_t heartbeatInterval_;
 
     const identity_type identity_;
     timepoint_type latestHeartBeat_;
@@ -63,7 +67,9 @@ class BrokerApplication {
 
   public:
     BrokerApplication()
-      : context_(), frontendSocket_(), backendSocket_()
+    : heartbeatInterval_(1000), cacheQueueLength_(100),
+      context_(), frontendSocket_(), backendSocket_(),
+      cacheQueue_(), idleWorkers_(), busyWorkers_()
     {
     }
 
@@ -74,7 +80,7 @@ class BrokerApplication {
     void go() {
       //  Send out heartbeats at regular intervals
       timepoint_type nextHeartBeat;
-      nextHeartBeat = std::chrono::steady_clock::now() +
+      nextHeartBeat = steadyclock_type::now() +
         std::chrono::milliseconds(heartbeatInterval_);
 
       while (true) {
@@ -97,7 +103,7 @@ class BrokerApplication {
 
         assignJobs();
 
-        timepoint_type now = std::chrono::steady_clock::now();
+        timepoint_type now = steadyclock_type::now();
         if (now > nextHeartBeat) {
           sendHeartBeat(idleWorkers_);
           sendHeartBeat(busyWorkers_);
@@ -236,7 +242,7 @@ class BrokerApplication {
     }
 
     void checkWorkers(workermap_type& workers) const {
-      timepoint_type now = std::chrono::steady_clock::now();
+      timepoint_type now = steadyclock_type::now();
 
       workermap_type::iterator workerIt = workers.begin();
       while (workerIt != workers.end()) {
@@ -254,12 +260,10 @@ class BrokerApplication {
       workermap_type::iterator it = workers.find(identity);
 
       if (it == workers.end()) {
-        auto insert = workers.emplace(identity, identity);
-
-        it = insert.first;
+        it = workers.insert(std::make_pair(identity, Worker(identity))).first;
       }
 
-      timepoint_type now = std::chrono::steady_clock::now();
+      timepoint_type now = steadyclock_type::now();
       it->second.update(now);
     }
 
@@ -273,8 +277,8 @@ class BrokerApplication {
     // do not copy
     BrokerApplication(const BrokerApplication&);
 
-    const std::size_t heartbeatInterval_ = 1000;
-    const std::size_t cacheQueueLength_ = 100;
+    const std::size_t heartbeatInterval_;
+    const std::size_t cacheQueueLength_;
 
     zmq::Context context_;
     zmq::Socket frontendSocket_;
@@ -285,8 +289,10 @@ class BrokerApplication {
     workermap_type busyWorkers_;
 };
 
+}
+
 int main(int /*argc*/, const char** /*argv*/) {
-  BrokerApplication app;
+  zmqmap::BrokerApplication app;
   app.init();
 
   app.go();

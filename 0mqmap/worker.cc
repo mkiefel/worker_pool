@@ -1,5 +1,6 @@
 #include "tags.h"
 #include "worker.h"
+#include "clock.h"
 
 #include <0mq/poller.h>
 
@@ -16,7 +17,7 @@
 
 namespace zmqmap {
 
-typedef std::chrono::time_point<std::chrono::steady_clock> timepoint_type;
+typedef std::chrono::time_point<steadyclock_type> timepoint_type;
 
 Job::Job(const jobfunction_type& jobFunction, zmq::Context& context)
 : context_(context), jobFunction_(jobFunction), doWork_(true)
@@ -55,7 +56,9 @@ void Job::go(const std::string& bindStr) {
 }
 
 Worker::Worker(const jobfunction_type& jobFunction)
-: context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_),
+: heartbeatInterval_(1000), queuebeatInterval_(3000),
+  intervalInit_(1000), intervalMax_(4000),
+  context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_),
   isBusy_(false), client_(), jobID_()
 {
 }
@@ -86,12 +89,12 @@ void Worker::init(const std::string& brokerAddress) {
 
 void Worker::go() {
   timepoint_type nextQueueBeat;
-  nextQueueBeat = std::chrono::steady_clock::now() +
+  nextQueueBeat = steadyclock_type::now() +
     std::chrono::milliseconds(queuebeatInterval_);
   std::size_t interval = intervalInit_;
 
   timepoint_type nextHeartBeat;
-  nextHeartBeat = std::chrono::steady_clock::now() +
+  nextHeartBeat = steadyclock_type::now() +
     std::chrono::milliseconds(heartbeatInterval_);
 
   while (true) {
@@ -109,7 +112,7 @@ void Worker::go() {
     if (state[0] & ZMQ_POLLIN) {
       immediateUpdate = immediateUpdate || handleQueue();
 
-      nextQueueBeat = std::chrono::steady_clock::now() +
+      nextQueueBeat = steadyclock_type::now() +
         std::chrono::milliseconds(queuebeatInterval_);
     }
 
@@ -120,8 +123,7 @@ void Worker::go() {
       immediateUpdate = true;
     }
 
-    timepoint_type now =
-      std::chrono::steady_clock::now();
+    timepoint_type now = steadyclock_type::now();
 
     if (now > nextQueueBeat) {
       std::cout << "W: heartbeat failure, can't reach queue" << std::endl;
@@ -135,7 +137,7 @@ void Worker::go() {
 
       connect();
 
-      nextQueueBeat = std::chrono::steady_clock::now() +
+      nextQueueBeat = steadyclock_type::now() +
         std::chrono::milliseconds(queuebeatInterval_);
     }
 
