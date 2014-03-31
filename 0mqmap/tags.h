@@ -9,13 +9,13 @@ enum JobTags {
 };
 
 enum QueueTags {
-  QUEUE_HEARTBEAT_TAG = 1,
-  QUEUE_JOB_TAG = 2
+  QUEUE_HEARTBEAT_TAG = 11,
+  QUEUE_JOB_TAG = 12
 };
 
 enum WorkerTags {
-  WORKER_HEARTBEAT_TAG = 1,
-  WORKER_UPDATE_TAG = 2
+  WORKER_HEARTBEAT_TAG = 21,
+  WORKER_UPDATE_TAG = 22
 };
 
 #endif /* _TAGS_50C8919F7B4A_ */
