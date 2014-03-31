@@ -274,7 +274,7 @@ class BrokerApplication {
     BrokerApplication(const BrokerApplication&);
 
     const std::size_t heartbeatInterval_ = 1000;
-    const std::size_t cacheQueueLength_ = 1;
+    const std::size_t cacheQueueLength_ = 100;
 
     zmq::Context context_;
     zmq::Socket frontendSocket_;
