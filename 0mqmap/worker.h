@@ -65,6 +65,7 @@ class Worker {
     bool isBusy_;
     zmq::Message client_;
     zmq::Message jobID_;
+    zmq::Message call_;
 
     std::string brokerAddress_;
 };

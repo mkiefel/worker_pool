@@ -10,14 +10,41 @@
 #include <thread>
 #include <cassert>
 #include <cstring>
+#include <random>
 
 namespace zmqmap {
+
+template <typename TValue>
+TValue demarshal(const zmq::Message& msg) {
+  TValue v;
+
+  if (msg.size() != sizeof(TValue)) {
+    throw std::runtime_error("demashal: invalid size");
+  }
+
+  memcpy(&v, msg.data(), msg.size());
+  return v;
+}
+
+template <typename TValue>
+zmq::Message marshal(TValue v) {
+  zmq::Message msg(sizeof(v));
+
+  memcpy(msg.data(), &v, msg.size());
+  return msg;
+}
 
 Client::Client()
 : heartbeatLiveness_(3), heartbeatInterval_(1000),
   jobbeatInterval_(3000),
   intervalInit_(1000), intervalMax_(4000),
-  context_(), clientSocket_() {
+  context_(), clientSocket_(),
+  call_(0)
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<std::size_t> dis;
+    call_ = dis(gen);
 }
 
 Client::~Client() {
@@ -56,7 +83,7 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       const std::size_t messageSize = messages.size();
 
       // check if we got a valid message
-      if (messageSize < 2) {
+      if (messageSize < 3) {
         throw std::runtime_error("Client::map: got interrupted or "
             "got invalid message");
       }
@@ -64,12 +91,8 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       zmq::Socket::messages_type::iterator messagePtr =
         messages.begin();
       const zmq::Message& tag = *messagePtr++;
-      const zmq::Message& jobIDPart = *messagePtr++;
-      jobid_type jobID;
-      if (jobIDPart.size() != sizeof(jobid_type)) {
-        throw std::runtime_error("Client::map: job id has wrong size");
-      }
-      std::memcpy(&jobID, jobIDPart.data(), sizeof(jobid_type));
+      jobid_type jobID = demarshal<jobid_type>(*messagePtr++);
+      std::size_t call = demarshal<std::size_t>(*messagePtr++);
 
       if (tag.size() != 1) {
         throw std::runtime_error("Client::map: invalid tag size");
@@ -80,39 +103,43 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
       }
 
       liveness = heartbeatLiveness_;
-      switch (tag.data()[0]) {
-        case JOB_WAIT:
-          // queue is busy; sleep and try again
-          handleJobWait(jobID, waitingJobs, busyJobs);
+      if (call == call_) {
+        switch (tag.data()[0]) {
+          case JOB_WAIT:
+            // queue is busy; sleep and try again
+            handleJobWait(jobID, waitingJobs, busyJobs);
 
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-          break;
-        case JOB_QUEUED:
-          // do nothing
-          updateJob(jobID, busyJobs);
-          break;
-        case JOB_BUSY:
-          // do nothing
-          updateJob(jobID, busyJobs);
-          break;
-        case JOB_DONE:
-          if (messageSize != 3) {
-            throw std::runtime_error("Client::map: invalid done message");
-          }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            break;
+          case JOB_QUEUED:
+            // do nothing
+            updateJob(jobID, busyJobs);
+            break;
+          case JOB_BUSY:
+            // do nothing
+            updateJob(jobID, busyJobs);
+            break;
+          case JOB_DONE:
+            if (messageSize != 4) {
+              throw std::runtime_error("Client::map: invalid done message");
+            }
 
-          mappedData[jobID] = *messagePtr;
-          handleJobDone(jobID, busyJobs);
-          --unfinishedJobCount;
-          break;
-        default:
-          throw std::runtime_error("Client::map: invalid job tag");
+            mappedData[jobID] = *messagePtr;
+            handleJobDone(jobID, busyJobs);
+            --unfinishedJobCount;
+            break;
+          default:
+            throw std::runtime_error("Client::map: invalid job tag");
+        }
+      } else {
+        std::cout << "Client::map: warning got old message" << std::endl;
       }
     }
 
     if (--liveness == 0) {
-      std::cout << "W: heartbeat failure, can't reach queue or worker "
+      std::cout << "Client::map: heartbeat failure, can't reach queue or worker "
         "died" << std::endl;
-      std::cout << "W: reconnecting in " << interval << " msec..." <<
+      std::cout << "Client::map: reconnecting in " << interval << " msec..." <<
         std::endl;
 
       std::this_thread::sleep_for(std::chrono::milliseconds(interval));
@@ -130,6 +157,7 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
     checkJobs(waitingJobs, busyJobs);
   }
 
+  ++call_;
   return mappedData;
 }
 
@@ -183,11 +211,9 @@ void Client::requestJob(const std::vector<zmq::Message>& mapData,
   std::size_t jobID = waitingJobs.front();
   waitingJobs.pop_front();
 
-  zmq::Message job(sizeof(jobid_type));
-  std::memcpy(job.data(), &jobID, sizeof(jobid_type));
-
   zmq::Socket::messages_type request;
-  request.push_back(std::move(job));
+  request.push_back(marshal<jobid_type>(jobID));
+  request.push_back(marshal<std::size_t>(call_));
   request.push_back(mapData[jobID]);
 
   clientSocket_.send(request);

@@ -20,6 +20,7 @@ typedef std::chrono::time_point<steadyclock_type> timepoint_type;
 
 typedef zmq::Message identity_type;
 typedef zmq::Message jobid_type;
+typedef zmq::Message call_type;
 
 class IdentityHash {
 public:
@@ -166,8 +167,9 @@ class BrokerApplication {
           job.begin();
         const zmq::Message& client = *messagePtr++;
         const zmq::Message& jobID = *messagePtr++;
+        const zmq::Message& call = *messagePtr++;
 
-        sendJobTag(client, JOB_QUEUED, jobID);
+        sendJobTag(client, JOB_QUEUED, jobID, call);
       }
     }
 
@@ -187,20 +189,22 @@ class BrokerApplication {
           messages.begin();
         const zmq::Message& client = *messagePtr++;
         const zmq::Message& jobID = *messagePtr++;
+        const zmq::Message& call = *messagePtr++;
 
-        sendJobTag(client, JOB_WAIT, jobID);
+        sendJobTag(client, JOB_WAIT, jobID, call);
       }
     }
 
     void sendJobTag(const identity_type& client, const int tag, const
-        jobid_type& jobID) {
+        jobid_type& jobID, const call_type& call) {
       zmq::Socket::messages_type reply;
       reply.push_back(client);
 
       zmq::Message jobReplyTag(1);
       jobReplyTag.data()[0] = tag;
       reply.push_back(std::move(jobReplyTag));
-      reply.push_back(std::move(jobID));
+      reply.push_back(jobID);
+      reply.push_back(call);
 
       frontendSocket_.send(reply);
     }

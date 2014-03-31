@@ -59,7 +59,7 @@ Worker::Worker(const jobfunction_type& jobFunction)
 : heartbeatInterval_(1000), queuebeatInterval_(3000),
   intervalInit_(1000), intervalMax_(4000),
   context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_),
-  isBusy_(false), client_(), jobID_()
+  isBusy_(false), client_(), jobID_(), call_()
 {
 }
 
@@ -71,6 +71,7 @@ void Worker::init(const std::string& brokerAddress) {
   isBusy_ = false;
   client_ = zmq::Message();
   jobID_ = zmq::Message();
+  call_ = zmq::Message();
 
   brokerAddress_ = brokerAddress;
 
@@ -179,7 +180,7 @@ bool Worker::handleQueue() {
       break;
     case QUEUE_JOB_TAG:
       // got a job
-      if (messageSize != 4) {
+      if (messageSize != 5) {
         throw std::runtime_error("Worker::handleQueue: invalid job request");
       }
 
@@ -214,6 +215,7 @@ void Worker::sendHeartBeat() {
     jobReplyTag.data()[0] = JOB_BUSY;
     heartbeat.push_back(std::move(jobReplyTag));
     heartbeat.push_back(jobID_);
+    heartbeat.push_back(call_);
     workerSocket_.send(heartbeat);
   }
 }
@@ -222,6 +224,7 @@ void Worker::handleNewJob(zmq::Socket::messages_type::const_iterator messagePtr)
   // push the address of the client
   client_ = *messagePtr++;
   jobID_ = *messagePtr++;
+  call_ = *messagePtr++;
   isBusy_ = true;
 
   zmq::Socket::messages_type jobRequest;
@@ -246,6 +249,7 @@ void Worker::handleJobDone() {
   jobReplyTag.data()[0] = JOB_DONE;
   reply.push_back(std::move(jobReplyTag));
   reply.push_back(std::move(jobID_));
+  reply.push_back(std::move(call_));
 
   reply.splice(reply.end(), jobReply);
 

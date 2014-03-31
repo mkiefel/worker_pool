@@ -66,6 +66,8 @@ class Client {
 
     zmq::Context context_;
     zmq::Socket clientSocket_;
+
+    std::size_t call_;
 };
 
 }
