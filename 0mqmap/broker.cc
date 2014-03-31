@@ -92,8 +92,8 @@ class BrokerApplication {
           handleFrontend();
         }
 
-        // we do not care about vanished idle workers
         checkWorkers(idleWorkers_);
+        checkWorkers(busyWorkers_);
 
         assignJobs();
 
