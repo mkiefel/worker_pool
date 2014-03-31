@@ -39,7 +39,7 @@ class Worker {
 
     ~Worker();
 
-    void init();
+    void init(const std::string& brokerAddress);
     void go();
 
   private:
@@ -65,6 +65,8 @@ class Worker {
     bool isBusy_;
     zmq::Message client_;
     zmq::Message jobID_;
+
+    std::string brokerAddress_;
 };
 
 }

@@ -63,7 +63,15 @@ Worker::Worker(const jobfunction_type& jobFunction)
 Worker::~Worker() {
 }
 
-void Worker::init() {
+void Worker::init(const std::string& brokerAddress) {
+  // reset
+  isBusy_ = false;
+  client_ = zmq::Message();
+  jobID_ = zmq::Message();
+
+  brokerAddress_ = brokerAddress;
+
+  // build work horse Job and connect via inner proc communication
   boost::uuids::uuid uuid;
 
   std::ostringstream bindStr;
@@ -246,7 +254,8 @@ void Worker::handleJobDone() {
 
 void Worker::connect() {
   workerSocket_ = context_.createSocket(ZMQ_DEALER);
-  workerSocket_.connect("tcp://localhost:5556");
+  //workerSocket_.connect("tcp://localhost:5556");
+  workerSocket_.connect(brokerAddress_);
 
   //  Tell queue we're ready for work
   zmq::Message message(1);
