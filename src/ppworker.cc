@@ -19,8 +19,8 @@ int main(int argc, const char** argv) {
 
   std::string brokerAddress = argv[1];
 
-  zmqmap::Worker worker(job);
-  worker.init(brokerAddress);
+  zmqmap::Worker worker(brokerAddress);
+  worker.init(job);
 
   worker.go();
 

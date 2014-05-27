@@ -14,19 +14,19 @@ class Job {
   public:
     typedef std::function<zmq::Message (const zmq::Message&)> jobfunction_type;
 
-    Job(const jobfunction_type& jobFunction, zmq::Context& context);
+    Job();
     ~Job();
 
-    void init(const std::string& bindStr);
+    void init(const std::string& bindStr, const jobfunction_type& jobFunction,
+        zmq::Context& context);
 
   private:
-    void go(const std::string& bindStr);
+    void go(const std::string& bindStr, const jobfunction_type& jobFunction,
+        zmq::Context& context);
 
     // do not copy
     Job(const Job&);
 
-    zmq::Context context_;
-    const jobfunction_type jobFunction_;
     bool doWork_;
     std::unique_ptr<std::thread> thread_;
 };
@@ -35,11 +35,11 @@ class Worker {
   public:
     typedef std::function<zmq::Message (const zmq::Message&)> jobfunction_type;
 
-    Worker(const jobfunction_type& jobFunction);
+    Worker(const std::string& brokerAddress);
 
     ~Worker();
 
-    void init(const std::string& brokerAddress);
+    void init(const jobfunction_type& jobFunction);
     void go();
 
   private:

@@ -19,8 +19,8 @@ namespace zmqmap {
 
 typedef std::chrono::time_point<steadyclock_type> timepoint_type;
 
-Job::Job(const jobfunction_type& jobFunction, zmq::Context& context)
-: context_(context), jobFunction_(jobFunction), doWork_(true)
+Job::Job()
+: doWork_(true), thread_()
 {
 }
 
@@ -30,15 +30,16 @@ Job::~Job() {
   thread_->join();
 }
 
-void Job::init(const std::string& bindStr) {
-  using namespace std::placeholders;
+void Job::init(const std::string& bindStr, const jobfunction_type& jobFunction,
+    zmq::Context& context) {
   // create a thread that waits on the job socket for work
   thread_ = std::unique_ptr<std::thread>(new
-      std::thread(std::bind(&Job::go, this, bindStr)));
+      std::thread(std::bind(&Job::go, this, bindStr, jobFunction, context)));
 }
 
-void Job::go(const std::string& bindStr) {
-  zmq::Socket jobSocket = context_.createSocket(ZMQ_PAIR);
+void Job::go(const std::string& bindStr, const jobfunction_type& jobFunction,
+    zmq::Context& context) {
+  zmq::Socket jobSocket = context.createSocket(ZMQ_PAIR);
   jobSocket.connect(bindStr.c_str());
 
   while (doWork_) {
@@ -48,32 +49,31 @@ void Job::go(const std::string& bindStr) {
       throw std::runtime_error("Job::go: empty data");
     }
 
-    zmq::Message replyMessage = jobFunction_(request.front());
+    zmq::Message replyMessage = jobFunction(request.front());
 
     zmq::Socket::messages_type reply {replyMessage};
     jobSocket.send(reply);
   }
 }
 
-Worker::Worker(const jobfunction_type& jobFunction)
+Worker::Worker(const std::string& brokerAddress)
 : heartbeatInterval_(1000), queuebeatInterval_(3000),
   intervalInit_(1000), intervalMax_(4000),
-  context_(), workerSocket_(), jobSocket_(), job_(jobFunction, context_),
-  isBusy_(false), client_(), jobID_(), call_()
+  context_(), workerSocket_(), jobSocket_(), job_(),
+  isBusy_(false), client_(), jobID_(), call_(),
+  brokerAddress_(brokerAddress)
 {
 }
 
 Worker::~Worker() {
 }
 
-void Worker::init(const std::string& brokerAddress) {
+void Worker::init(const jobfunction_type& jobFunction) {
   // reset
   isBusy_ = false;
   client_ = zmq::Message();
   jobID_ = zmq::Message();
   call_ = zmq::Message();
-
-  brokerAddress_ = brokerAddress;
 
   // build work horse Job and connect via inner proc communication
   boost::uuids::uuid uuid;
@@ -83,7 +83,7 @@ void Worker::init(const std::string& brokerAddress) {
 
   jobSocket_ = context_.createSocket(ZMQ_PAIR);
   jobSocket_.bind(bindStr.str().c_str());
-  job_.init(bindStr.str());
+  job_.init(bindStr.str(), jobFunction, context_);
 
   connect();
 }
