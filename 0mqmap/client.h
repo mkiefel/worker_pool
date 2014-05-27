@@ -18,10 +18,10 @@ namespace zmqmap {
 
 class Client {
   public:
-    Client();
+    Client(const std::string& brokerAddress);
     ~Client();
 
-    void init(const std::string& brokerAddress);
+    void init();
 
     std::vector<zmq::Message> map(const std::vector<zmq::Message>& mapData);
 

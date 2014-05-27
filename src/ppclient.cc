@@ -13,8 +13,8 @@ int main(int argc, const char** argv) {
 
   std::string brokerAddress = argv[1];
 
-  zmqmap::Client client;
-  client.init(brokerAddress);
+  zmqmap::Client client(brokerAddress);
+  client.init();
 
   zmq::Message data(1);
 

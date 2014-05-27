@@ -34,10 +34,11 @@ zmq::Message marshal(TValue v) {
   return msg;
 }
 
-Client::Client()
+Client::Client(const std::string& brokerAddress)
 : heartbeatLiveness_(3), heartbeatInterval_(1000),
   jobbeatInterval_(3000),
   intervalInit_(1000), intervalMax_(4000),
+  brokerAddress_(brokerAddress),
   context_(), clientSocket_(),
   call_(0)
 {
@@ -50,8 +51,7 @@ Client::Client()
 Client::~Client() {
 }
 
-void Client::init(const std::string& brokerAddress) {
-  brokerAddress_ = brokerAddress;
+void Client::init() {
   connect();
 }
 
