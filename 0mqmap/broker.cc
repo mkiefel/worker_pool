@@ -75,8 +75,8 @@ class BrokerApplication {
     {
     }
 
-    void init() {
-      connect();
+    void init(const std::string& frontend, const std::string& backend) {
+      connect(frontend, backend);
     }
 
     void go() {
@@ -280,11 +280,11 @@ class BrokerApplication {
       it->second.update(now);
     }
 
-    void connect() {
+    void connect(const std::string& frontend, const std::string& backend) {
       frontendSocket_ = context_.createSocket(ZMQ_ROUTER);
       backendSocket_ = context_.createSocket(ZMQ_ROUTER);
-      frontendSocket_.bind("tcp://*:5555");
-      backendSocket_.bind("tcp://*:5556");
+      frontendSocket_.bind(frontend);
+      backendSocket_.bind(backend);
     }
 
     // do not copy
@@ -304,9 +304,16 @@ class BrokerApplication {
 
 }
 
-int main(int /*argc*/, const char** /*argv*/) {
+int main(int argc, const char** argv) {
+  if (argc < 3) {
+    std::cerr << "Usage: " << argv[0] << " <frontend> <backend>" << std::endl
+      << "e.g. " << argv[0] << " 'tcp://*:5555' 'tcp://*:5556'" << std::endl;
+
+    return 1;
+  }
+
   zmqmap::BrokerApplication app;
-  app.init();
+  app.init(argv[1], argv[2]);
 
   app.go();
 
