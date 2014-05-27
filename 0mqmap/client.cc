@@ -70,8 +70,12 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
 
   std::vector<zmq::Message> mappedData(unfinishedJobCount);
 
+  bool wasWait = false;
+
   while (unfinishedJobCount > 0) {
-    requestJob(mapData, waitingJobs, busyJobs);
+    if (!wasWait)
+      requestJob(mapData, waitingJobs, busyJobs);
+    wasWait = false;
 
     std::vector<zmq::Socket> items = { clientSocket_ };
 
@@ -109,7 +113,7 @@ std::vector<zmq::Message> Client::map(const std::vector<zmq::Message>&
             // queue is busy; sleep and try again
             handleJobWait(jobID, waitingJobs, busyJobs);
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            wasWait = true;
             break;
           case JOB_QUEUED:
             // do nothing
