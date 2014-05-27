@@ -14,6 +14,7 @@
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
+#include <sstream>
 
 namespace zmqmap {
 
@@ -68,8 +69,8 @@ class BrokerApplication {
     typedef std::unordered_map<identity_type, Worker, IdentityHash> workermap_type;
 
   public:
-    BrokerApplication()
-    : heartbeatInterval_(1000), cacheQueueLength_(100),
+    BrokerApplication(const std::size_t cacheQueueLength)
+    : heartbeatInterval_(1000), cacheQueueLength_(cacheQueueLength),
       context_(), frontendSocket_(), backendSocket_(),
       cacheQueue_(), idleWorkers_(), busyWorkers_()
     {
@@ -305,15 +306,18 @@ class BrokerApplication {
 }
 
 int main(int argc, const char** argv) {
-  if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " <frontend> <backend>" << std::endl
-      << "e.g. " << argv[0] << " 'tcp://*:5555' 'tcp://*:5556'" << std::endl;
+  if (argc < 4) {
+    std::cerr << "Usage: " << argv[0] << " <queue-length> <frontend> <backend>" << std::endl
+      << "e.g. " << argv[0] << " 100 'tcp://*:5555' 'tcp://*:5556'" << std::endl;
 
     return 1;
   }
 
-  zmqmap::BrokerApplication app;
-  app.init(argv[1], argv[2]);
+  std::size_t queueLength;
+  std::istringstream(argv[1]) >> queueLength;
+
+  zmqmap::BrokerApplication app(queueLength);
+  app.init(argv[2], argv[3]);
 
   app.go();
 
