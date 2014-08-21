@@ -42,17 +42,23 @@ void Job::go(const std::string& bindStr, const jobfunction_type& jobFunction,
   zmq::Socket jobSocket = context.createSocket(ZMQ_PAIR);
   jobSocket.connect(bindStr.c_str());
 
+  std::vector<zmq::Socket> items = { jobSocket };
   while (doWork_) {
-    zmq::Socket::messages_type request = jobSocket.receive();
+    std::vector<short> state = zmq::poll(items, 100);
 
-    if (request.size() != 1) {
-      throw std::runtime_error("Job::go: empty data");
+    // handle backend
+    if (state[0] & ZMQ_POLLIN) {
+      zmq::Socket::messages_type request = jobSocket.receive();
+
+      if (request.size() != 1) {
+        throw std::runtime_error("Job::go: empty data");
+      }
+
+      zmq::Message replyMessage = jobFunction(request.front());
+
+      zmq::Socket::messages_type reply {replyMessage};
+      jobSocket.send(reply);
     }
-
-    zmq::Message replyMessage = jobFunction(request.front());
-
-    zmq::Socket::messages_type reply {replyMessage};
-    jobSocket.send(reply);
   }
 }
 
@@ -60,7 +66,7 @@ Worker::Worker(const std::string& brokerAddress)
 : heartbeatInterval_(1000), queuebeatInterval_(3000),
   intervalInit_(1000), intervalMax_(4000),
   context_(), workerSocket_(), jobSocket_(), job_(),
-  isBusy_(false), client_(), jobID_(), call_(),
+  isRunning_(true), isBusy_(false), client_(), jobID_(), call_(),
   brokerAddress_(brokerAddress)
 {
 }
@@ -98,7 +104,7 @@ void Worker::go() {
   nextHeartBeat = steadyclock_type::now() +
     std::chrono::milliseconds(heartbeatInterval_);
 
-  while (true) {
+  while (isRunning_) {
     bool immediateUpdate = false;
 
     std::vector<zmq::Socket> items = { workerSocket_ };
@@ -127,9 +133,10 @@ void Worker::go() {
     timepoint_type now = steadyclock_type::now();
 
     if (now > nextQueueBeat) {
-      std::cout << "W: heartbeat failure, can't reach queue" << std::endl;
-      std::cout << "W: reconnecting in " << interval << " msec..." <<
-        std::endl;
+      std::cout << "Worker::go: warning heartbeat failure, can't reach queue"
+        << std::endl;
+      std::cout << "Worker::go: warning: reconnecting in " << interval
+        << " msec..." << std::endl;
 
       std::this_thread::sleep_for(std::chrono::milliseconds(interval));
 
@@ -188,10 +195,19 @@ bool Worker::handleQueue() {
         handleNewJob(messagePtr);
         immediateUpdate = true;
       } else {
-        std::cout << "W: I am busy but I got a job. I'll ignore it" <<
-          std::endl;
+        std::cout << "Worker::handleQueue: warning: I am busy but I got a job. "
+          "I'll ignore it" << std::endl;
       }
 
+      break;
+    case QUEUE_KILL_TAG:
+      std::cout << "Worker::handleQueue: kill" << std::endl;
+      // XXX not nice, but I need to kill running computations
+      exit(1);
+      isRunning_ = false;
+      break;
+    default:
+      throw std::runtime_error("Worker::handleQueue: invalid tag");
       break;
   }
 

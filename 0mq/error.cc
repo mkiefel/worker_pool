@@ -13,4 +13,8 @@ const char* Error::what() const throw() {
   return zmq_strerror(error_);
 }
 
+int Error::getErrorCode() const {
+  return error_;
+}
+
 }

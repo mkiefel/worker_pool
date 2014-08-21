@@ -10,7 +10,8 @@ enum JobTags {
 
 enum QueueTags {
   QUEUE_HEARTBEAT_TAG = 11,
-  QUEUE_JOB_TAG = 12
+  QUEUE_JOB_TAG = 12,
+  QUEUE_KILL_TAG = 13
 };
 
 enum WorkerTags {

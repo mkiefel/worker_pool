@@ -62,6 +62,7 @@ class Worker {
     zmq::Socket workerSocket_, jobSocket_;
     Job job_;
 
+    bool isRunning_;
     bool isBusy_;
     zmq::Message client_;
     zmq::Message jobID_;

@@ -11,6 +11,7 @@ class Error : public std::exception
     Error();
 
     virtual const char* what() const throw();
+    int getErrorCode() const;
 
   private:
     const int error_;
